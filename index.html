@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GPX Combiner</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+:root{--bg:#eef2f1;--panel:#fff;--ink:#17262b;--mute:#5c6f75;--line:#d3dcdb;--accent:#14705c}
+@media (prefers-color-scheme:dark){:root{--bg:#10191c;--panel:#182327;--ink:#e6eeee;--mute:#8da0a5;--line:#2a3a3f;--accent:#4fc3a1}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font-family:"Avenir Next","Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--ink);display:flex}
+aside{width:340px;max-width:42vw;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;z-index:1000}
+header{padding:18px 18px 12px}
+h1{font-size:1.35rem;margin:0 0 4px;letter-spacing:-.01em}
+header p{margin:0;color:var(--mute);font-size:.85rem;line-height:1.4}
+#drop{margin:0 18px;border:2px dashed var(--line);border-radius:10px;padding:18px;text-align:center;cursor:pointer;color:var(--mute);font-size:.9rem}
+#drop.over,#drop:hover,#drop:focus-visible{border-color:var(--accent);color:var(--accent);outline:none}
+#drop strong{color:var(--ink)}
+#list{flex:1;overflow:auto;padding:12px 18px;margin:0;list-style:none}
+#list li{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);font-size:.88rem}
+#list input[type=color]{width:26px;height:26px;border:0;padding:0;background:none;cursor:pointer;flex:none}
+.name{flex:1;min-width:0;cursor:pointer}
+.name b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.name small{color:var(--mute)}
+li button{border:0;background:none;color:var(--mute);cursor:pointer;font-size:1.1rem;padding:4px 6px;border-radius:6px}
+li button:hover{color:var(--ink);background:var(--bg)}
+.empty{color:var(--mute);font-size:.88rem;border:0!important;display:block!important}
+footer{padding:14px 18px;border-top:1px solid var(--line);display:grid;gap:10px}
+label.opt{display:flex;gap:8px;align-items:flex-start;font-size:.82rem;color:var(--mute);line-height:1.35}
+.btns{display:flex;gap:8px}
+.btn{flex:1;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font:inherit;font-weight:600;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn:focus-visible,li button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#map{flex:1;height:100%}
+.keyrow{display:flex;gap:8px;margin:12px 18px 6px}
+.keyrow input{flex:1;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit;font-size:.85rem}
+.keyrow input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.keyrow .btn{flex:none;padding:8px 12px;font-size:.85rem}
+#msg{font-size:.8rem;color:#b3372b;min-height:1em;padding:0 18px}
+@media (max-width:700px){body{flex-direction:column-reverse}aside{width:100%;max-width:none;height:48%;border-right:0;border-top:1px solid var(--line)}#map{height:52%}}
+</style>
+</head>
+<body>
+<aside>
+  <header>
+    <h1>GPX Combiner</h1>
+    <p>Add several GPX files, see them on one map, then download a single combined file.</p>
+  </header>
+  <div id="drop" tabindex="0" role="button" aria-label="Add GPX files"><strong>Drop GPX files here</strong><br>or click to choose files</div>
+  <input id="file" type="file" accept=".gpx,application/gpx+xml,text/xml" multiple hidden>
+  <div class="keyrow">
+    <input id="key" type="text" placeholder="CARTO API key" aria-label="CARTO API key" autocomplete="off" spellcheck="false">
+    <button class="btn" id="saveKey" type="button">Apply key</button>
+  </div>
+  <div id="msg" role="status"></div>
+  <ul id="list"><li class="empty">No files yet.</li></ul>
+  <footer>
+    <label class="opt"><input type="checkbox" id="merge"> Join all tracks into one continuous track (in list order)</label>
+    <label class="opt"><input type="checkbox" id="keepColors" checked> Keep each file's colour in the combined GPX (needs separate tracks)</label>
+    <div class="btns">
+      <button class="btn" id="clear" disabled>Clear all</button>
+      <button class="btn primary" id="export" disabled>Download combined GPX</button>
+    </div>
+  </footer>
+</aside>
+<div id="map"></div>
+
+<script>
+const map = L.map('map').setView([51.5, -0.12], 6);
+// CARTO API key: you can paste it into the box in the sidebar, or hard-code it here.
+const CARTO_KEY_FALLBACK = '';
+function getKey() { try { return localStorage.getItem('cartoKey') || CARTO_KEY_FALLBACK; } catch (e) { return CARTO_KEY_FALLBACK; } }
+function cartoUrl(k) { return 'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png' + (k ? '?key=' + encodeURIComponent(k) : ''); }
+const osmAttr = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+const baseLayers = {
+  'Streets (CARTO)': L.tileLayer(cartoUrl(getKey()), {
+    maxZoom: 20, attribution: osmAttr + ' &copy; <a href="https://carto.com/attributions">CARTO</a>'
+  }),
+  'Topo (Esri)': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19, attribution: 'Tiles &copy; Esri'
+  }),
+  'Satellite + place names (Esri)': L.layerGroup([
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 19, attribution: 'Tiles &copy; Esri'
+    }),
+    // Country, city and boundary labels drawn on top of the imagery
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 19, zIndex: 2
+    })
+  ]),
+  // OSM's servers reject requests without a Referer, so this only works when the page is served over http(s), not opened as a local file.
+  'OpenStreetMap (needs http hosting)': L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, attribution: osmAttr
+  })
+};
+baseLayers['Streets (CARTO)'].addTo(map);
+L.control.layers(baseLayers, null, {position: 'topright'}).addTo(map);
+const keyBox = document.getElementById('key');
+keyBox.value = getKey();
+document.getElementById('saveKey').onclick = () => {
+  const k = keyBox.value.trim();
+  try { k ? localStorage.setItem('cartoKey', k) : localStorage.removeItem('cartoKey'); } catch (e) {}
+  baseLayers['Streets (CARTO)'].setUrl(cartoUrl(k));
+  document.getElementById('msg').textContent = k ? 'CARTO key applied. If you still see a watermark, force-refresh (Ctrl/Cmd+Shift+R).' : 'CARTO key cleared.';
+};
+
+const palette = ['#e6194b','#3a6fe0','#f58231','#2a9d4a','#911eb4','#0aa5b8','#d6a400','#c2185b','#6d4c41','#546e7a'];
+let items = []; // {id,name,color,group,waypoints,tracks,routes,visible,points,km}
+let nextId = 1;
+const $ = id => document.getElementById(id);
+
+function dist(a, b) {
+  const R = 6371, rad = Math.PI / 180;
+  const dLat = (b[0]-a[0])*rad, dLon = (b[1]-a[1])*rad;
+  const h = Math.sin(dLat/2)**2 + Math.cos(a[0]*rad)*Math.cos(b[0]*rad)*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+const pt = el => ({lat: +el.getAttribute('lat'), lon: +el.getAttribute('lon'),
+  ele: el.getElementsByTagName('ele')[0]?.textContent, time: el.getElementsByTagName('time')[0]?.textContent,
+  name: el.getElementsByTagName('name')[0]?.textContent});
+const kids = (el, tag) => [...el.children].filter(c => c.localName === tag);
+
+function parseGpx(text, fileName) {
+  const doc = new DOMParser().parseFromString(text, 'application/xml');
+  if (doc.getElementsByTagName('parsererror').length) throw new Error('not valid XML');
+  const root = doc.documentElement;
+  if (root.localName !== 'gpx') throw new Error('not a GPX file');
+  const tracks = kids(root, 'trk').map((t, i) => ({
+    name: kids(t, 'name')[0]?.textContent || fileName.replace(/\.gpx$/i, '') + (i ? ' ' + (i+1) : ''),
+    segments: kids(t, 'trkseg').map(s => kids(s, 'trkpt').map(pt))
+  }));
+  const routes = kids(root, 'rte').map((r, i) => ({
+    name: kids(r, 'name')[0]?.textContent || fileName.replace(/\.gpx$/i, '') + ' route' + (i ? ' ' + (i+1) : ''),
+    points: kids(r, 'rtept').map(pt)
+  }));
+  const waypoints = kids(root, 'wpt').map(pt);
+  if (!tracks.length && !routes.length && !waypoints.length) throw new Error('no tracks, routes or waypoints');
+  return {tracks, routes, waypoints};
+}
+
+function draw(item) {
+  if (item.group) map.removeLayer(item.group);
+  const g = L.featureGroup(), opt = {color: item.color, weight: 4, opacity: .85};
+  let km = 0, n = 0;
+  item.tracks.forEach(t => t.segments.forEach(seg => {
+    const ll = seg.map(p => [p.lat, p.lon]);
+    ll.forEach((p, i) => { n++; if (i) km += dist(ll[i-1], p); });
+    if (ll.length) L.polyline(ll, opt).bindTooltip(t.name, {sticky: true}).addTo(g);
+  }));
+  item.routes.forEach(r => {
+    const ll = r.points.map(p => [p.lat, p.lon]);
+    ll.forEach((p, i) => { n++; if (i) km += dist(ll[i-1], p); });
+    if (ll.length) L.polyline(ll, {...opt, dashArray: '8 6'}).bindTooltip(r.name, {sticky: true}).addTo(g);
+  });
+  item.waypoints.forEach(w => L.circleMarker([w.lat, w.lon], {radius: 6, color: '#fff', weight: 2, fillColor: item.color, fillOpacity: 1})
+    .bindTooltip(w.name || 'Waypoint').addTo(g));
+  item.group = g; item.points = n; item.km = km;
+  if (item.visible) g.addTo(map);
+}
+
+function fit() {
+  const gs = items.filter(i => i.visible && i.group);
+  if (!gs.length) return;
+  const b = L.featureGroup(gs.map(i => i.group)).getBounds();
+  if (b.isValid()) map.fitBounds(b, {padding: [30, 30]});
+}
+
+function render() {
+  const ul = $('list');
+  ul.innerHTML = '';
+  if (!items.length) ul.innerHTML = '<li class="empty">No files yet.</li>';
+  items.forEach(it => {
+    const li = document.createElement('li');
+    li.innerHTML = `<input type="color" value="${it.color}" aria-label="Colour for ${it.name}">
+      <div class="name" title="Zoom to this file"><b></b><small>${it.km.toFixed(1)} km · ${it.points} points${it.waypoints.length ? ' · ' + it.waypoints.length + ' waypoints' : ''}</small></div>
+      <button class="vis" aria-label="Toggle visibility">${it.visible ? '👁' : '◌'}</button>
+      <button class="del" aria-label="Remove ${it.name}">✕</button>`;
+    li.querySelector('b').textContent = it.name;
+    li.querySelector('input').oninput = e => { it.color = e.target.value; draw(it); };
+    li.querySelector('.name').onclick = () => { if (it.group) map.fitBounds(it.group.getBounds(), {padding: [30, 30]}); };
+    li.querySelector('.vis').onclick = () => { it.visible = !it.visible; it.visible ? it.group.addTo(map) : map.removeLayer(it.group); render(); };
+    li.querySelector('.del').onclick = () => { map.removeLayer(it.group); items = items.filter(x => x !== it); render(); };
+    ul.appendChild(li);
+  });
+  $('export').disabled = $('clear').disabled = !items.length;
+}
+
+async function addFiles(fileList) {
+  const errors = [];
+  for (const f of fileList) {
+    try {
+      const data = parseGpx(await f.text(), f.name);
+      const item = {id: nextId++, name: f.name, color: palette[(nextId - 2) % palette.length], visible: true, ...data};
+      draw(item); items.push(item);
+    } catch (e) { errors.push(`${f.name}: ${e.message}`); }
+  }
+  $('msg').textContent = errors.length ? 'Skipped ' + errors.join('; ') : '';
+  render(); fit();
+}
+
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const ptXml = (p, tag, ind) => `${ind}<${tag} lat="${p.lat}" lon="${p.lon}">` +
+  (p.ele != null ? `<ele>${esc(p.ele)}</ele>` : '') + (p.time ? `<time>${esc(p.time)}</time>` : '') +
+  (p.name ? `<name>${esc(p.name)}</name>` : '') + `</${tag}>\n`;
+
+// Garmin's extension only allows these 16 named colours, so we send the nearest one.
+const GARMIN = {Black:[0,0,0],DarkRed:[139,0,0],DarkGreen:[0,100,0],DarkYellow:[139,139,0],DarkBlue:[0,0,139],DarkMagenta:[139,0,139],
+  DarkCyan:[0,139,139],LightGray:[211,211,211],DarkGray:[105,105,105],Red:[255,0,0],Green:[0,255,0],Yellow:[255,255,0],
+  Blue:[0,0,255],Magenta:[255,0,255],Cyan:[0,255,255],White:[255,255,255]};
+function garminName(hex) {
+  const c = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+  let best = 'Red', bd = Infinity;
+  for (const [n, v] of Object.entries(GARMIN)) {
+    const d = (v[0]-c[0])**2 + (v[1]-c[1])**2 + (v[2]-c[2])**2;
+    if (d < bd) { bd = d; best = n; }
+  }
+  return best;
+}
+function colorExt(hex, kind, ind) {
+  const rgb = hex.slice(1).toUpperCase(), g = garminName(hex), tag = kind === 'trk' ? 'TrackExtension' : 'RouteExtension';
+  return `${ind}<extensions>\n` +
+    `${ind}  <gpxx:${tag}><gpxx:DisplayColor>${g}</gpxx:DisplayColor></gpxx:${tag}>\n` +
+    `${ind}  <gpx_style:line><gpx_style:color>${rgb}</gpx_style:color></gpx_style:line>\n` +
+    `${ind}  <osmand:color>#${rgb.toLowerCase()}</osmand:color>\n` +
+    `${ind}</extensions>\n`;
+}
+
+function buildGpx() {
+  const merge = $('merge').checked, keep = $('keepColors').checked && !merge;
+  let wpts = '', rtes = '', trks = '';
+  const all = items; // include hidden ones too
+  all.forEach(it => {
+    it.waypoints.forEach(w => wpts += ptXml(w, 'wpt', '  '));
+    it.routes.forEach(r => rtes += `  <rte>\n    <name>${esc(r.name)}</name>\n` + (keep ? colorExt(it.color, 'rte', '    ') : '') + r.points.map(p => ptXml(p, 'rtept', '    ')).join('') + `  </rte>\n`);
+    if (!merge) it.tracks.forEach(t => trks += `  <trk>\n    <name>${esc(t.name)}</name>\n` + (keep ? colorExt(it.color, 'trk', '    ') : '') +
+      t.segments.map(s => `    <trkseg>\n` + s.map(p => ptXml(p, 'trkpt', '      ')).join('') + `    </trkseg>\n`).join('') + `  </trk>\n`);
+  });
+  if (merge) {
+    const segs = [];
+    all.forEach(it => it.tracks.forEach(t => t.segments.forEach(s => s.length && segs.push(s))));
+    if (segs.length) trks = `  <trk>\n    <name>Combined track</name>\n` +
+      segs.map(s => `    <trkseg>\n` + s.map(p => ptXml(p, 'trkpt', '      ')).join('') + `    </trkseg>\n`).join('') + `  </trk>\n`;
+  }
+  const ns = keep ? ' xmlns:gpxx="http://www.garmin.com/xmlschemas/GpxExtensions/v3" xmlns:gpx_style="http://www.topografix.com/GPX/gpx_style/0/2" xmlns:osmand="https://osmand.net"' : '';
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="GPX Combiner" xmlns="http://www.topografix.com/GPX/1/1"${ns}>\n` +
+    `  <metadata><name>Combined GPX</name><time>${new Date().toISOString()}</time></metadata>\n${wpts}${rtes}${trks}</gpx>\n`;
+}
+
+$('merge').onchange = () => { $('keepColors').disabled = $('merge').checked; };
+
+$('export').onclick = () => {
+  const blob = new Blob([buildGpx()], {type: 'application/gpx+xml'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'combined.gpx';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+$('clear').onclick = () => { items.forEach(i => map.removeLayer(i.group)); items = []; $('msg').textContent = ''; render(); };
+
+const drop = $('drop'), input = $('file');
+drop.onclick = () => input.click();
+drop.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } };
+input.onchange = () => { addFiles([...input.files]); input.value = ''; };
+['dragenter', 'dragover'].forEach(ev => window.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(ev => window.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+window.addEventListener('drop', e => addFiles([...e.dataTransfer.files].filter(f => /\.gpx$|xml$/i.test(f.name))));
+</script>
+</body>
+</html>
