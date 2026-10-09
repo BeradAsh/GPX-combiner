@@ -35,13 +35,46 @@ label.opt{display:flex;gap:8px;align-items:flex-start;font-size:.82rem;color:var
 .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 .btn:focus-visible,li button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-#map{flex:1;height:100%}
+#mapwrap{flex:1;height:100%;position:relative;min-width:0}
+#map{position:absolute;inset:0}
+#profile{position:absolute;left:12px;right:12px;bottom:24px;z-index:1100;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:10px 14px 6px;box-shadow:0 6px 24px rgba(0,0,0,.25)}
+.phead{display:flex;align-items:center;gap:8px}
+#pswatch{width:12px;height:12px;border-radius:3px;flex:none}
+#ptitle{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#pread{font-size:.82rem;color:var(--mute);font-variant-numeric:tabular-nums}
+#pclose{border:0;background:none;color:var(--mute);cursor:pointer;font-size:1.1rem;padding:4px 8px;border-radius:6px}
+#pclose:hover{color:var(--ink);background:var(--bg)}
+#pclose:focus-visible{outline:2px solid var(--accent)}
+#pstats{display:flex;flex-wrap:wrap;gap:2px 18px;font-size:.82rem;color:var(--mute);margin:4px 0 2px}
+#pstats b{color:var(--ink)}
+#pchart svg{display:block;width:100%}
+.pnone{margin:10px 0 14px;font-size:.85rem;color:var(--mute)}
+.pbody{display:flex;gap:16px;align-items:stretch}
+.pleft{flex:1;min-width:0}
+.pright{width:300px;flex:none;border-left:1px solid var(--line);padding:0 0 6px 16px;max-height:270px;overflow:auto;font-size:.82rem}
+.pright h3{margin:2px 0 8px;font-size:.9rem}
+.kv{margin:0;display:grid;grid-template-columns:1fr 1fr;gap:6px 12px}
+.kv dt{color:var(--mute);font-size:.75rem}
+.kv dd{margin:0;font-weight:600;font-variant-numeric:tabular-nums}
+.pnote{margin:10px 0 4px;color:var(--mute);font-size:.75rem;line-height:1.4;background:var(--bg);padding:6px 8px;border-radius:6px}
+.splits{width:100%;border-collapse:collapse;margin-top:10px;font-variant-numeric:tabular-nums}
+.splits th{text-align:left;color:var(--mute);font-weight:500;font-size:.75rem;padding:2px 4px;position:sticky;top:0;background:var(--panel)}
+.splits td{padding:2px 4px}
+.splits td:last-child{width:34%}
+.splits .bar{display:block;height:6px;border-radius:3px;background:var(--accent);opacity:.7}
+@media (max-width:700px){#profile{max-height:80%;overflow:auto}.pbody{flex-direction:column;gap:8px}.pright{width:auto;max-height:none;border-left:0;padding-left:0;border-top:1px solid var(--line);padding-top:8px}}
+.grid{stroke:var(--line);stroke-width:1}
+.ax{fill:var(--mute);font-size:11px}
+.cur{stroke:var(--mute);stroke-dasharray:3 3}
 .keyrow{display:flex;gap:8px;margin:12px 18px 6px}
 .keyrow input{flex:1;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit;font-size:.85rem}
 .keyrow input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .keyrow .btn{flex:none;padding:8px 12px;font-size:.85rem}
+.dimrow{display:flex;align-items:center;gap:8px;margin:6px 18px;font-size:.82rem;color:var(--mute)}
+.dimrow input{flex:1;min-width:0;accent-color:var(--accent)}
+.dimrow span{width:3em;text-align:right}
 #msg{font-size:.8rem;color:#b3372b;min-height:1em;padding:0 18px}
-@media (max-width:700px){body{flex-direction:column-reverse}aside{width:100%;max-width:none;height:48%;border-right:0;border-top:1px solid var(--line)}#map{height:52%}}
+@media (max-width:700px){body{flex-direction:column-reverse}aside{width:100%;max-width:none;height:48%;border-right:0;border-top:1px solid var(--line)}#mapwrap{height:52%}}
 </style>
 </head>
 <body>
@@ -56,6 +89,11 @@ label.opt{display:flex;gap:8px;align-items:flex-start;font-size:.82rem;color:var
     <input id="key" type="text" placeholder="CARTO API key" aria-label="CARTO API key" autocomplete="off" spellcheck="false">
     <button class="btn" id="saveKey" type="button">Apply key</button>
   </div>
+  <div class="dimrow">
+    <label for="dim">Map dimming</label>
+    <input id="dim" type="range" min="0" max="100" value="55">
+    <span id="dimv">55%</span>
+  </div>
   <div id="msg" role="status"></div>
   <ul id="list"><li class="empty">No files yet.</li></ul>
   <footer>
@@ -67,7 +105,20 @@ label.opt{display:flex;gap:8px;align-items:flex-start;font-size:.82rem;color:var
     </div>
   </footer>
 </aside>
-<div id="map"></div>
+<div id="mapwrap">
+  <div id="map"></div>
+  <section id="profile" aria-label="Elevation profile" style="display:none">
+    <div class="phead"><span id="pswatch"></span><strong id="ptitle"></strong><span id="pread"></span>
+      <button id="pclose" type="button" aria-label="Close elevation profile">✕</button></div>
+    <div class="pbody">
+      <div class="pleft">
+        <div id="pstats"></div>
+        <div id="pchart"></div>
+      </div>
+      <div class="pright" id="ptime"></div>
+    </div>
+  </section>
+</div>
 
 <script>
 const map = L.map('map').setView([51.5, -0.12], 6);
@@ -92,13 +143,14 @@ const baseLayers = {
       maxZoom: 19, zIndex: 2
     })
   ]),
-  // OSM's servers reject requests without a Referer, so this only works when the page is served over http(s), not opened as a local file.
-  'OpenStreetMap (needs http hosting)': L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  'OpenStreetMap': L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19, attribution: osmAttr
   })
 };
-baseLayers['Streets (CARTO)'].addTo(map);
-L.control.layers(baseLayers, null, {position: 'topright'}).addTo(map);
+const orderedLayers = {};
+['OpenStreetMap', 'Satellite + place names (Esri)', 'Streets (CARTO)', 'Topo (Esri)'].forEach(k => orderedLayers[k] = baseLayers[k]);
+baseLayers['OpenStreetMap'].addTo(map);
+L.control.layers(orderedLayers, null, {position: 'topright'}).addTo(map);
 const keyBox = document.getElementById('key');
 keyBox.value = getKey();
 document.getElementById('saveKey').onclick = () => {
@@ -149,12 +201,14 @@ function draw(item) {
   item.tracks.forEach(t => t.segments.forEach(seg => {
     const ll = seg.map(p => [p.lat, p.lon]);
     ll.forEach((p, i) => { n++; if (i) km += dist(ll[i-1], p); });
-    if (ll.length) L.polyline(ll, opt).bindTooltip(t.name, {sticky: true}).addTo(g);
+    if (ll.length) L.polyline(ll, opt).bindTooltip(t.name, {sticky: true})
+      .on('click', () => showProfile(item, t.name, t.segments.flat())).addTo(g);
   }));
   item.routes.forEach(r => {
     const ll = r.points.map(p => [p.lat, p.lon]);
     ll.forEach((p, i) => { n++; if (i) km += dist(ll[i-1], p); });
-    if (ll.length) L.polyline(ll, {...opt, dashArray: '8 6'}).bindTooltip(r.name, {sticky: true}).addTo(g);
+    if (ll.length) L.polyline(ll, {...opt, dashArray: '8 6'}).bindTooltip(r.name, {sticky: true})
+      .on('click', () => showProfile(item, r.name, r.points)).addTo(g);
   });
   item.waypoints.forEach(w => L.circleMarker([w.lat, w.lon], {radius: 6, color: '#fff', weight: 2, fillColor: item.color, fillOpacity: 1})
     .bindTooltip(w.name || 'Waypoint').addTo(g));
@@ -180,10 +234,20 @@ function render() {
       <button class="vis" aria-label="Toggle visibility">${it.visible ? '👁' : '◌'}</button>
       <button class="del" aria-label="Remove ${it.name}">✕</button>`;
     li.querySelector('b').textContent = it.name;
-    li.querySelector('input').oninput = e => { it.color = e.target.value; draw(it); };
+    li.querySelector('input').oninput = e => {
+      it.color = e.target.value; draw(it);
+      if (prof.item === it) { prof.color = it.color; $('pswatch').style.background = it.color; renderProfile(); }
+    };
     li.querySelector('.name').onclick = () => { if (it.group) map.fitBounds(it.group.getBounds(), {padding: [30, 30]}); };
-    li.querySelector('.vis').onclick = () => { it.visible = !it.visible; it.visible ? it.group.addTo(map) : map.removeLayer(it.group); render(); };
-    li.querySelector('.del').onclick = () => { map.removeLayer(it.group); items = items.filter(x => x !== it); render(); };
+    li.querySelector('.vis').onclick = () => {
+      it.visible = !it.visible; it.visible ? it.group.addTo(map) : map.removeLayer(it.group);
+      if (!it.visible && prof.item === it) hideProfile();
+      render();
+    };
+    li.querySelector('.del').onclick = () => {
+      if (prof.item === it) hideProfile();
+      map.removeLayer(it.group); items = items.filter(x => x !== it); render();
+    };
     ul.appendChild(li);
   });
   $('export').disabled = $('clear').disabled = !items.length;
@@ -259,7 +323,7 @@ $('export').onclick = () => {
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 };
-$('clear').onclick = () => { items.forEach(i => map.removeLayer(i.group)); items = []; $('msg').textContent = ''; render(); };
+$('clear').onclick = () => { hideProfile(); items.forEach(i => map.removeLayer(i.group)); items = []; $('msg').textContent = ''; render(); };
 
 const drop = $('drop'), input = $('file');
 drop.onclick = () => input.click();
@@ -268,6 +332,157 @@ input.onchange = () => { addFiles([...input.files]); input.value = ''; };
 ['dragenter', 'dragover'].forEach(ev => window.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
 ['dragleave', 'drop'].forEach(ev => window.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
 window.addEventListener('drop', e => addFiles([...e.dataTransfer.files].filter(f => /\.gpx$|xml$/i.test(f.name))));
+
+// ---------- Elevation profile ----------
+const prof = {item: null, color: '#14705c', data: [], total: 0, marker: null};
+const niceStep = s => { const e = 10 ** Math.floor(Math.log10(s)), f = s / e; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * e; };
+
+function showProfile(item, name, pts) {
+  let d = 0; const data = [];
+  pts.forEach((p, i) => {
+    if (i) d += dist([pts[i-1].lat, pts[i-1].lon], [p.lat, p.lon]);
+    const e = parseFloat(p.ele);
+    if (isFinite(e)) data.push({d, e, lat: p.lat, lon: p.lon});
+  });
+  Object.assign(prof, {item, color: item.color, data, total: d});
+  $('ptitle').textContent = name;
+  $('pswatch').style.background = item.color;
+  $('pread').textContent = '';
+  $('profile').style.display = 'block';
+  renderTime(pts);
+  renderProfile();
+}
+
+function hideProfile() {
+  $('profile').style.display = 'none';
+  prof.item = null;
+  if (prof.marker) { map.removeLayer(prof.marker); prof.marker = null; }
+}
+
+function renderProfile() {
+  const box = $('pchart'), stats = $('pstats'), {data, total, color} = prof;
+  box.innerHTML = '';
+  const km = `<span><b>${total.toFixed(2)} km</b> total distance</span>`;
+  if (data.length < 2) { stats.innerHTML = km; box.innerHTML = '<p class="pnone">This path has no elevation data.</p>'; return; }
+  const es = data.map(p => p.e), min = Math.min(...es), max = Math.max(...es);
+  const sm = es.map((_, i) => { let s = 0, n = 0; for (let j = Math.max(0, i - 2); j <= Math.min(es.length - 1, i + 2); j++) { s += es[j]; n++; } return s / n; });
+  let gain = 0; for (let i = 1; i < sm.length; i++) if (sm[i] > sm[i-1]) gain += sm[i] - sm[i-1];
+  stats.innerHTML = km + `<span><b>${Math.round(max)} m</b> highest</span><span><b>${Math.round(min)} m</b> lowest</span><span><b>${Math.round(gain)} m</b> climbed</span>`;
+
+  const W = box.clientWidth || 600, H = innerWidth < 700 ? 120 : 170, m = {l: 54, r: 14, t: 8, b: 24};
+  const iw = W - m.l - m.r, ih = H - m.t - m.b, T = total || 1;
+  const pad = Math.max((max - min) * .1, 5), lo = min - pad, hi = max + pad;
+  const X = d => m.l + d / T * iw, Y = e => m.t + (1 - (e - lo) / (hi - lo)) * ih;
+  const stepN = Math.ceil(data.length / 1500), pts = data.filter((_, i) => i % stepN === 0 || i === data.length - 1);
+  const line = pts.map((p, i) => (i ? 'L' : 'M') + X(p.d).toFixed(1) + ',' + Y(p.e).toFixed(1)).join('');
+  const area = line + `L${X(pts[pts.length-1].d).toFixed(1)},${m.t + ih}L${X(pts[0].d).toFixed(1)},${m.t + ih}Z`;
+  let grid = '';
+  const ys = niceStep((hi - lo) / 4);
+  for (let v = Math.ceil(lo / ys) * ys; v <= hi; v += ys)
+    grid += `<line class="grid" x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}"/><text class="ax" x="${m.l - 6}" y="${Y(v) + 4}" text-anchor="end">${Math.round(v)} m</text>`;
+  const xs = niceStep(T / 6);
+  for (let v = 0; v <= T + 1e-9; v += xs)
+    grid += `<line class="grid" x1="${X(v)}" x2="${X(v)}" y1="${m.t}" y2="${m.t + ih}"/><text class="ax" x="${X(v)}" y="${H - 6}" text-anchor="${v === 0 ? 'start' : 'middle'}">${+v.toFixed(2)} km</text>`;
+
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img" aria-label="Elevation profile">${grid}` +
+    `<path d="${area}" fill="${color}" fill-opacity=".18"/><path d="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>` +
+    `<line id="pcur" class="cur" y1="${m.t}" y2="${m.t + ih}" style="display:none"/>` +
+    `<circle id="pdot" r="4" fill="${color}" stroke="#fff" stroke-width="1.5" style="display:none"/>` +
+    `<rect id="phit" x="${m.l}" y="${m.t}" width="${iw}" height="${ih}" fill="transparent"/></svg>`;
+
+  const svg = box.querySelector('svg'), cur = $('pcur'), dot = $('pdot'), hit = $('phit');
+  hit.addEventListener('pointermove', ev => {
+    const r = svg.getBoundingClientRect();
+    const d = Math.min(Math.max((ev.clientX - r.left) * (W / r.width) - m.l, 0), iw) / iw * T;
+    let best = pts[0]; for (const p of pts) if (Math.abs(p.d - d) < Math.abs(best.d - d)) best = p;
+    cur.setAttribute('x1', X(best.d)); cur.setAttribute('x2', X(best.d)); cur.style.display = '';
+    dot.setAttribute('cx', X(best.d)); dot.setAttribute('cy', Y(best.e)); dot.style.display = '';
+    $('pread').textContent = `${best.d.toFixed(2)} km · ${Math.round(best.e)} m`;
+    if (!prof.marker) prof.marker = L.circleMarker([best.lat, best.lon], {radius: 7, color: '#fff', weight: 2, fillColor: prof.color, fillOpacity: 1, interactive: false}).addTo(map);
+    else prof.marker.setLatLng([best.lat, best.lon]);
+  });
+  hit.addEventListener('pointerleave', () => {
+    cur.style.display = 'none'; dot.style.display = 'none'; $('pread').textContent = '';
+    if (prof.marker) { map.removeLayer(prof.marker); prof.marker = null; }
+  });
+}
+
+// ---------- Time data (right section) ----------
+function fmtDur(s) {
+  s = Math.round(s);
+  const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), sec = s % 60, p = n => String(n).padStart(2, '0');
+  return h ? `${h}:${p(m)}:${p(sec)}` : `${m}:${p(sec)}`;
+}
+const fmtPace = s => isFinite(s) && s > 0 ? fmtDur(s) + ' /km' : '–';
+const fmtStamp = sec => new Date(sec * 1000).toLocaleString(undefined, {dateStyle: 'medium', timeStyle: 'medium'});
+
+function renderTime(pts) {
+  const el = $('ptime');
+  const note = '<p class="pnote">Note: your GPX file might not contain this type of data (planned routes, for example, usually have no timestamps), so some or all of this information may not be displayed.</p>';
+  let d = 0; const timed = [];
+  pts.forEach((p, i) => {
+    if (i) d += dist([pts[i-1].lat, pts[i-1].lon], [p.lat, p.lon]);
+    const t = Date.parse(p.time);
+    if (isFinite(t)) timed.push({d, t: t / 1000});
+  });
+  const t0 = timed[0], t1 = timed[timed.length - 1];
+  if (timed.length < 2 || t1.t <= t0.t) {
+    el.innerHTML = '<h3>Time &amp; pace</h3><p class="pnone">No timestamps found for this path.</p>' + note;
+    return;
+  }
+  const elapsed = t1.t - t0.t, timedDist = t1.d - t0.d;
+
+  // Moving vs stopped: a stretch counts as moving if speed >= 1 km/h; gaps over 10 min count as stopped (paused recording).
+  let moving = 0, movingDist = 0;
+  for (let i = 1; i < timed.length; i++) {
+    const dt = timed[i].t - timed[i-1].t, dd = timed[i].d - timed[i-1].d;
+    if (dt > 0 && dt <= 600 && dd / dt * 3600 >= 1) { moving += dt; movingDist += dd; }
+  }
+
+  // Per-km splits (elapsed time, interpolated between points)
+  const splits = []; let j = 1, prevT = t0.t;
+  const timeAt = rel => {
+    const target = t0.d + rel;
+    while (j < timed.length - 1 && timed[j].d < target) j++;
+    const a = timed[j-1], b = timed[j];
+    return b.d === a.d ? b.t : a.t + (b.t - a.t) * (target - a.d) / (b.d - a.d);
+  };
+  const full = Math.floor(timedDist);
+  for (let k = 1; k <= full; k++) { const t = timeAt(k); splits.push({label: k, sec: t - prevT, pace: t - prevT}); prevT = t; }
+  const rest = timedDist - full;
+  if (rest >= 0.05) splits.push({label: `${full + 1} (${rest.toFixed(2)} km)`, sec: t1.t - prevT, pace: (t1.t - prevT) / rest});
+  const fastest = Math.min(...splits.map(s => s.pace));
+
+  const row = (k, v) => `<div><dt>${k}</dt><dd>${v}</dd></div>`;
+  el.innerHTML = '<h3>Time &amp; pace</h3><dl class="kv">' +
+    row('Started', fmtStamp(t0.t)) + row('Finished', fmtStamp(t1.t)) +
+    row('Elapsed time', fmtDur(elapsed)) + row('Moving time', moving ? fmtDur(moving) : '–') +
+    row('Stopped time', fmtDur(Math.max(0, elapsed - moving))) +
+    row('Avg. pace (moving)', fmtPace(moving / movingDist)) +
+    row('Avg. pace (overall)', fmtPace(elapsed / timedDist)) + '</dl>' +
+    (splits.length ? '<table class="splits"><thead><tr><th>Km</th><th>Time</th><th>Pace</th><th></th></tr></thead><tbody>' +
+      splits.map(s => `<tr><td>${s.label}</td><td>${fmtDur(s.sec)}</td><td>${fmtDur(s.pace)}</td><td><span class="bar" style="width:${Math.max(8, fastest / s.pace * 100).toFixed(0)}%"></span></td></tr>`).join('') +
+      '</tbody></table>' : '') + note;
+}
+
+$('pclose').onclick = hideProfile;
+L.DomEvent.disableClickPropagation($('profile'));
+L.DomEvent.disableScrollPropagation($('profile'));
+addEventListener('keydown', e => { if (e.key === 'Escape') hideProfile(); });
+addEventListener('resize', () => { if (prof.item) renderProfile(); });
+
+// Dim only the map tiles (tilePane); tracks live in other panes and stay fully coloured.
+function applyDim(v, save) {
+  const s = v / 100;
+  map.getPane('tilePane').style.filter = v > 0 ? `grayscale(${s}) brightness(${1 - 0.3 * s}) contrast(${1 - 0.15 * s})` : '';
+  $('dimv').textContent = v + '%';
+  if (save) { try { localStorage.setItem('mapDim', v); } catch (e) {} }
+}
+let savedDim = 55;
+try { const d = localStorage.getItem('mapDim'); if (d !== null) savedDim = +d; } catch (e) {}
+$('dim').value = savedDim;
+applyDim(savedDim, false);
+$('dim').oninput = e => applyDim(+e.target.value, true);
 </script>
 </body>
 </html>
